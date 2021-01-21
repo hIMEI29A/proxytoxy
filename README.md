@@ -20,7 +20,7 @@ Work in progress
 
 ### Version
 
-v0.1.0
+v0.1.0-alpha
 
 ## Usage
 
@@ -34,8 +34,6 @@ v0.1.0
 	-n [NUM]     | --number  [NUM]         The number of proxies. Required.
 	-t [STRING]  | --type    [STRING]      The proxy's type. Required.
 	Allowed types: "socks5", "http".
-
-	-w [NUM]     | --workers [NUM]         The number of parallel tasks.
 
 	-p [ARGS...] | --proxies [ARGS...]    One or more socks5 proxies separated by commas for crawling sites of providers. Format of proxies: "socks5://IP:PORT". Not required option.
 
