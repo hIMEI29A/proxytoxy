@@ -238,68 +238,63 @@ func (p *Proxy) String() string {
 	)
 }
 
-func CheckProxies(proxies []*Proxy, anonFlag bool) []*Proxy {
-	var (
-		checked    = make(map[string]bool, 0)
-		newProxies = make([]*Proxy, 0)
-		mu         = &sync.Mutex{}
-	)
+func checkProxies(proxies []*Proxy) chan map[*Proxy]error {
+	ch := make(chan map[*Proxy]error)
+	//chOut chan map[*Proxy]error
+	go func() {
+		wg := &sync.WaitGroup{}
 
-	chanPr := make(chan map[*Proxy]error, 10)
+		for _, p := range proxies {
+			wg.Add(1)
 
-	fmt.Printf("Waiting for %d proxies to be checked.\n", len(proxies))
+			go func(pr *Proxy) {
+				defer wg.Done()
+				mp := make(map[*Proxy]error)
 
-	for _, p := range proxies {
-		if !checked[p.Addr] {
-			go func(pr *Proxy, ch chan map[*Proxy]error) {
-				mp := make(map[*Proxy]error, 0)
-				fmt.Println(pr.GetFullAddr(), "in check")
 				err := pr.check()
-				fmt.Println(pr.GetFullAddr(), "checked")
 				time.Sleep(10 * time.Millisecond)
 
 				mp[pr] = err
 				ch <- mp
-			}(p, chanPr)
+			}(p)
 		}
 
-		mu.Lock()
-		checked[p.Addr] = true
-		mu.Unlock()
-	}
+		wg.Wait()
+		close(ch)
+	}()
 
-	count := len(proxies) - 1
+	return ch
+}
 
-	for count >= 0 {
+func readChecked(ch chan map[*Proxy]error, anonFlag bool) []*Proxy {
+	var mu = &sync.Mutex{}
+	newProxies := make([]*Proxy, 0)
 
-		select {
-		case mp := <-chanPr:
-			fmt.Println("recieved", count)
-			for k, v := range mp {
-				time.Sleep(10 * time.Millisecond)
-				ve := v.(ProxyCheckError)
-				if ve.ResponseErr == "" && ve.RangeErr != "" {
-					k.Range = NotAnonymous
+	for mp := range ch {
+		for k, v := range mp {
+			ve := v.(ProxyCheckError)
 
-					if anonFlag {
-						mu.Lock()
-						newProxies = append(newProxies, k)
-						mu.Unlock()
-					}
-				}
+			if ve.ResponseErr == "" && ve.RangeErr != "" {
+				k.Range = NotAnonymous
 
-				if ve.ResponseErr == "" {
+				if anonFlag {
 					mu.Lock()
 					newProxies = append(newProxies, k)
 					mu.Unlock()
 				}
 			}
 
-			count--
+			if ve.ResponseErr == "" {
+				mu.Lock()
+				newProxies = append(newProxies, k)
+				mu.Unlock()
+			}
 		}
 	}
 
-	fmt.Println("All proxied checked. Done.")
-
 	return newProxies
+}
+
+func CheckProxies(proxies []*Proxy, anonFlag bool) []*Proxy {
+	return readChecked(checkProxies(proxies), anonFlag)
 }
